@@ -871,9 +871,9 @@
       <thead>
         <tr>
           <th>Category</th>
-          <th style="text-align:right;">Budgeted</th>
-          <th style="text-align:right;">Actual</th>
-          <th style="text-align:right;">Diff</th>
+          <th style="text-align:right;">Planned ($)</th>
+          <th style="text-align:right;">Actual ($)</th>
+          <th style="text-align:right;">+/−</th>
         </tr>
       </thead>
       <tbody id="budget-body"></tbody>
@@ -1206,8 +1206,10 @@ function saveBudget() {
 
 function getTotal(type, field) {
   let sum = 0;
-  document.querySelectorAll(`[class*="budget-${type}-"]`).forEach(el => {
-    if (el.className.includes(field)) sum += parseFloat(el.value) || 0;
+  const defaults = budgetDefaults[type] || [];
+  defaults.forEach((_, idx) => {
+    const el = document.querySelector(`.budget-${type}-${idx}-${field}`);
+    if (el) sum += parseFloat(el.value) || 0;
   });
   return sum;
 }
@@ -1219,19 +1221,41 @@ function updateBudgetSummary() {
       const aEl = document.querySelector(`.budget-${type}-${idx}-actual`);
       const dEl = document.querySelector(`.budget-${type}-${idx}-diff`);
       if (bEl && aEl && dEl) {
-        const d = (parseFloat(aEl.value)||0) - (parseFloat(bEl.value)||0);
-        dEl.textContent = (d >= 0 ? '+' : '') + '$' + d.toFixed(0);
-        dEl.className = d >= 0 ? 'diff-pos' : 'diff-neg';
+        const b = parseFloat(bEl.value) || 0;
+        const a = parseFloat(aEl.value) || 0;
+        // For income: earning more than planned = good (green). For expenses/savings: spending less = good (green).
+        let d, isGood;
+        if (type === 'income') {
+          d = a - b;
+          isGood = d >= 0;
+        } else {
+          d = b - a; // positive = under budget = good
+          isGood = d >= 0;
+        }
+        dEl.textContent = (d >= 0 ? '+' : '') + '$' + Math.round(d);
+        dEl.classList.remove('diff-pos', 'diff-neg');
+        dEl.classList.add(isGood ? 'diff-pos' : 'diff-neg');
       }
     });
   });
-  const incA = getTotal('income','actual'), savA = getTotal('savings','actual'), expA = getTotal('expenses','actual');
-  const leftA = incA - savA - expA;
+
+  const incB = getTotal('income','budget'), incA = getTotal('income','actual');
+  const savB = getTotal('savings','budget'), savA = getTotal('savings','actual');
+  const expB = getTotal('expenses','budget'), expA = getTotal('expenses','actual');
+
+  // Use actual if entered, fall back to planned so summary is never stuck at $0
+  const incDisplay = incA > 0 ? incA : incB;
+  const savDisplay = savA > 0 ? savA : savB;
+  const expDisplay = expA > 0 ? expA : expB;
+  const leftDisplay = incDisplay - savDisplay - expDisplay;
+  const isActual = incA > 0 || savA > 0 || expA > 0;
+  const modeLabel = isActual ? 'actual' : 'planned';
+
   document.getElementById('budget-summary').innerHTML = `
-    <div class="result-box royal"><div class="val">$${Math.round(incA)}</div><div class="lbl">Monthly Income</div></div>
-    <div class="result-box teal"><div class="val">$${Math.round(savA)}</div><div class="lbl">Saved This Month</div></div>
-    <div class="result-box" style="background:#7c3aed"><div class="val">$${Math.round(expA)}</div><div class="lbl">Total Expenses</div></div>
-    <div class="result-box ${leftA >= 0 ? 'gold' : ''}" style="${leftA < 0 ? 'background:var(--danger)' : ''}"><div class="val">$${Math.round(leftA)}</div><div class="lbl">${leftA >= 0 ? 'Left Over' : 'Over Budget'}</div></div>`;
+    <div class="result-box royal"><div class="val">$${Math.round(incDisplay)}</div><div class="lbl">Income (${modeLabel})</div></div>
+    <div class="result-box teal"><div class="val">$${Math.round(savDisplay)}</div><div class="lbl">Savings (${modeLabel})</div></div>
+    <div class="result-box" style="background:#7c3aed"><div class="val">$${Math.round(expDisplay)}</div><div class="lbl">Expenses (${modeLabel})</div></div>
+    <div class="result-box ${leftDisplay >= 0 ? 'gold' : ''}" style="${leftDisplay < 0 ? 'background:var(--danger)' : ''}"><div class="val">$${Math.round(leftDisplay)}</div><div class="lbl">${leftDisplay >= 0 ? 'Left Over' : 'Over Budget'}</div></div>`;
 }
 
 // ── EMERGENCY FUND ────────────────────────────────────────────────────────────
